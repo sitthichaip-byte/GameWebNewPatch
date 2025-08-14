@@ -1,54 +1,59 @@
-// server.js (Corrected Version)
+// server.js (Final Corrected Version)
 
-// 1. เรียกใช้โมดูลที่จำเป็น
 const express = require('express');
 const http = require('http');
-const path = require('path'); // <-- บรรทัดนี้ถูกต้องแล้ว
+const path = require('path');
 const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
 
-// 2. บอกให้เซิร์ฟเวอร์รู้จักโฟลเดอร์ public
-// บรรทัดนี้คือการ "ใช้" เครื่องมือ path เพื่อสร้างที่อยู่ไปยังโฟลเดอร์ public
+// Serve the static files from the 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 3. ตั้งค่า Socket.IO Server
+// CORS configuration for Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: "*", 
+    origin: "*", // Allows connections from any origin
+    methods: ["GET", "POST"]
   }
 });
 
-// --- Logic ของเกม ---
+// Game Logic
 const words = ["algorithm", "database", "javascript", "network", "server", "protocol", "firebase"];
 let waitingPlayer = null;
 
 io.on('connection', (socket) => {
-  // ... โค้ดส่วนที่เหลือถูกต้องทั้งหมด ...
-  console.log('ผู้เล่นเชื่อมต่อเข้ามา:', socket.id);
+  console.log('Player connected:', socket.id);
 
   if (waitingPlayer) {
     const roomName = `room-${waitingPlayer.id}-${socket.id}`;
+    
     waitingPlayer.join(roomName);
     socket.join(roomName);
-    io.to(roomName).emit('gameStart', { p1: waitingPlayer.id, p2: socket.id });
-    console.log(`เริ่มเกมในห้อง ${roomName}`);
+
+    io.to(roomName).emit('gameStart', {
+      p1: waitingPlayer.id,
+      p2: socket.id
+    });
+    
+    console.log(`Game started in room ${roomName}`);
     sendNewWord(roomName);
+
     waitingPlayer = null;
   } else {
     waitingPlayer = socket;
-    socket.emit('waiting', 'กำลังรอผู้เล่นอีกคน...');
+    socket.emit('waiting', 'Waiting for another player...');
   }
 
   socket.on('wordTyped', (data) => {
-    console.log(`ผู้เล่น ${socket.id} พิมพ์เสร็จแล้วในห้อง ${data.room}`);
+    console.log(`Player ${socket.id} finished a word in room ${data.room}`);
     socket.to(data.room).emit('opponentFinished'); 
     sendNewWord(data.room);
   });
 
   socket.on('disconnect', () => {
-    console.log('ผู้เล่นตัดการเชื่อมต่อ:', socket.id);
+    console.log('Player disconnected:', socket.id);
     if (waitingPlayer === socket) {
       waitingPlayer = null;
     }
@@ -58,10 +63,10 @@ io.on('connection', (socket) => {
 function sendNewWord(room) {
   const newWord = words[Math.floor(Math.random() * words.length)];
   io.to(room).emit('newWord', newWord);
-  console.log(`ส่งคำใหม่ "${newWord}" ไปยังห้อง ${room}`);
+  console.log(`Sent new word "${newWord}" to room ${room}`);
 }
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`เซิร์ฟเวอร์กำลังรอการเชื่อมต่อที่ Port ${PORT}`);
+  console.log(`Server is listening on port ${PORT}`);
 });
