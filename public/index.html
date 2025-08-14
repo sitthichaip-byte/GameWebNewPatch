@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>Typomancer (Final Version)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Noto+Sans+Thai:wght@400&display=swap" rel="stylesheet">
+    <style>
+        /* --- CSS Section --- */
+        body {
+            background-color: #1a1a2e; color: #e0e0e0; font-family: 'Noto Sans Thai', sans-serif;
+            display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center;
+        }
+        #main-container { display: flex; align-items: flex-start; gap: 20px; }
+        #game-container {
+            width: 800px; height: 600px; background: rgba(23, 23, 39, 0.8); border: 2px solid #a486f2;
+            border-radius: 15px; box-shadow: 0 0 25px rgba(164, 134, 242, 0.5); padding: 20px;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+        #leaderboard-container {
+            width: 300px; background: rgba(23, 23, 39, 0.8); border: 2px solid #fca311;
+            padding: 20px; border-radius: 15px; height: 560px;
+        }
+        #leaderboard-container h2 { font-family: 'Cinzel', serif; color: #fca311; margin-top: 0; }
+        #leaderboard-list { list-style: none; padding: 0; text-align: left; }
+        #leaderboard-list li {
+            background: rgba(255, 255, 255, 0.05); margin-bottom: 8px; padding: 8px; border-radius: 5px;
+            display: flex; justify-content: space-between; font-size: 1.1em;
+        }
+        #game-stats { display: flex; justify-content: space-around; font-size: 1.2em; }
+        #monster-area {
+            flex-grow: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: flex-end;
+        }
+        #monster-name { font-family: 'Cinzel', serif; font-size: 2em; color: #fca311; text-shadow: 0 0 10px #fca311; height: 40px; }
+        #health-bar-container {
+            width: 80%; height: 25px; background-color: #333; border: 2px solid #fca311;
+            border-radius: 15px; margin-top: 5px; overflow: hidden;
+        }
+        #health-bar {
+            width: 100%; height: 100%; background: linear-gradient(90deg, #d32f2f, #ff4141);
+            transition: width 0.5s ease-in-out;
+        }
+        #monster-image { max-height: 180px; margin-top: 10px; transition: transform 0.2s; }
+        #monster-image.hurt { transform: scale(1.05); filter: brightness(1.5); }
+        #word-to-type {
+            font-size: 2.5em; letter-spacing: 5px; font-weight: bold; color: #ffffff;
+            text-shadow: 0 0 15px #00e5ff; height: 60px;
+        }
+        #player-input {
+            width: 80%; padding: 15px; font-size: 1.5em; text-align: center;
+            background-color: rgba(255, 255, 255, 0.1); border: 2px solid #a486f2;
+            border-radius: 10px; color: #ffffff; outline: none; margin: 20px auto;
+        }
+        /* ⭐️ CSS ใหม่: จัดกลางให้ปุ่มตอนจบเกม ⭐️ */
+        #start-screen {
+            height: 80px; /* เพิ่มความสูงเผื่อปุ่ม */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #start-button {
+            padding: 20px 40px; font-size: 2em; font-family: 'Cinzel', serif; color: #1a1a2e;
+            background-color: #fca311; border: none; border-radius: 10px; cursor: pointer; transition: transform 0.2s;
+        }
+        #start-button:hover { transform: scale(1.05); }
+        .correct { color: #00ff7f; }
+        .incorrect { color: #ff4141; }
+    </style>
+</head>
+<body>
+
+    <div id="main-container">
+        <div id="game-container">
+            <div id="game-stats">
+                <div>คะแนน: <span id="score">0</span></div>
+                <div>เวลา: <span id="timer">0</span></div>
+            </div>
+            <div id="monster-area">
+                <h2 id="monster-name">Typomancer</h2>
+                <div id="health-bar-container">
+                    <div id="health-bar"></div>
+                </div>
+                <img id="monster-image" src="https://i.imgur.com/placeholder.png" alt="Monster">
+            </div>
+            <div id="word-to-type"></div>
+            <input type="text" id="player-input" placeholder="พิมพ์คาถาที่นี่..." autocomplete="off" disabled>
+            <div id="start-screen">
+                <button id="start-button">เริ่มเกม</button>
+            </div>
+        </div>
+        <div id="leaderboard-container">
+             <h2>🏆 Leaderboard 🏆</h2>
+            <ul id="leaderboard-list">
+                <li>กำลังโหลด...</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+    <script>
+        // --- 1. การตั้งค่าและตัวแปร ---
+        
+        // กุญแจสำหรับเชื่อมต่อ Firebase
+        const firebaseConfig = {
+          apiKey: "AIzaSyBUBIEQLU2OHw_1ataX1di6V86s0qPsr_E",
+          authDomain: "typomancer-game.firebaseapp.com",
+          projectId: "typomancer-game",
+          storageBucket: "typomancer-game.appspot.com",
+          messagingSenderId: "988104502180",
+          appId: "1:988104502180:web:62dd3b80869a131b39ef31"
+        };
+    
+        // เริ่มการเชื่อมต่อ Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        
+        // ฐานข้อมูลมอนสเตอร์
+        const monsterDatabase = [
+            { 
+                name: "Slime",
+                imageUrl: "https://i.postimg.cc/8zLsyfJp/monster-horror.gif",
+                words: ["aqua", "bubble", "splash", "whip"],
+                baseHealth: 1
+            },
+            { 
+                name: "Godzilla",
+                imageUrl: "https://i.postimg.cc/L8MYz3C4/tumblr-b560de8aa57e477d5fc6eb7e356a8e86-ef0e9259-1280.webp",
+                words: ["atomic", "crush", "stomp", "radioactive"],
+                baseHealth: 2
+            },
+            {
+                name: "Jörmungandr",
+                imageUrl: "https://i.postimg.cc/SKS44nsf/tumblr-pysire-Cw-Ur1y172yjo3-400.webp",
+                words: ["midgard", "venom", "ragnarok", "world-eater"],
+                baseHealth: 3
+            }
+        ];
+        
+        // ตัวแปรสำหรับ Element ในหน้าเว็บ
+        const scoreDisplay = document.getElementById('score');
+        const timerDisplay = document.getElementById('timer');
+        const monsterImage = document.getElementById('monster-image');
+        const monsterName = document.getElementById('monster-name');
+        const wordToType = document.getElementById('word-to-type');
+        const playerInput = document.getElementById('player-input');
+        const startButton = document.getElementById('start-button');
+        const leaderboardList = document.getElementById('leaderboard-list');
+        const healthBar = document.getElementById('health-bar');
+    
+        // ตัวแปรสำหรับควบคุมสถานะเกม
+        let gameLevel = 0;
+        let score = 0, timer, timeLeft = 15, currentWord = '', isPlaying = false;
+        let availableMonsters = [];
+        let currentMonsterHealth = 0;
+        let currentMonsterMaxHealth = 0;
+        let currentMonsterObject = null;
+
+        // --- 2. โหมดเล่นหลายคน (PvP) ---
+        const socket = io("https://gamennetservet.onrender.com");
+        let myRoom = '';
+
+        socket.on('connect_error', () => {
+            console.log("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ PvP ได้, เข้าสู่โหมดเล่นคนเดียว");
+        });
+        
+        socket.on('waiting', (message) => { monsterName.textContent = message; });
+        socket.on('gameStart', (players) => {
+            playerInput.disabled = false;
+            playerInput.focus();
+            myRoom = `room-${players.p1}-${players.p2}`;
+        });
+        socket.on('newWord', (word) => {
+            currentWord = word;
+            wordToType.innerHTML = currentWord.split('').map(char => `<span>${char}</span>`).join('');
+            playerInput.value = '';
+            monsterName.textContent = "แข่งกันพิมพ์!";
+        });
+        socket.on('opponentFinished', () => { alert("คู่แข่งของคุณชนะในรอบนี้!"); });
+
+
+        // --- 3. ฟังก์ชันหลักของเกม ---
+
+        function startGame() { 
+            isPlaying = true; 
+            myRoom = ''; 
+            startButton.style.display = 'none'; 
+            playerInput.disabled = false; 
+            score = 0; 
+            scoreDisplay.textContent = score; 
+            availableMonsters = [...monsterDatabase];
+            gameLevel = 0;
+            // ⭐️ ทำให้ส่วน UI ของมอนสเตอร์กลับมาแสดงผล ⭐️
+            monsterImage.style.display = 'block';
+            document.getElementById('health-bar-container').style.display = 'block';
+            newRound(); 
+        }
+        
+        function newRound() {
+            if (availableMonsters.length === 0) {
+                availableMonsters = [...monsterDatabase];
+            }
+            const randomIndex = Math.floor(Math.random() * availableMonsters.length);
+            currentMonsterObject = availableMonsters[randomIndex];
+            availableMonsters.splice(randomIndex, 1);
+            
+            const healthBonus = Math.floor(gameLevel / 2);
+            currentMonsterMaxHealth = currentMonsterObject.baseHealth + healthBonus;
+            currentMonsterHealth = currentMonsterMaxHealth;
+            
+            updateHealthBar();
+
+            monsterImage.src = currentMonsterObject.imageUrl;
+            monsterName.textContent = currentMonsterObject.name;
+            
+            getNewWord();
+            
+            clearInterval(timer);
+            timeLeft = 15;
+            timerDisplay.textContent = timeLeft;
+            timer = setInterval(updateTimer, 1000);
+            playerInput.focus();
+        }
+
+        function getNewWord() {
+            playerInput.value = '';
+            const newWordIndex = Math.floor(Math.random() * currentMonsterObject.words.length);
+            currentWord = currentMonsterObject.words[newWordIndex];
+            wordToType.innerHTML = currentWord.split('').map(char => `<span>${char}</span>`).join('');
+        }
+
+        function updateHealthBar() {
+            const healthPercent = (currentMonsterHealth / currentMonsterMaxHealth) * 100;
+            healthBar.style.width = `${healthPercent}%`;
+        }
+
+        function checkInput() {
+            const typedText = playerInput.value;
+            const wordChars = wordToType.querySelectorAll('span');
+            let isCorrect = true;
+
+            wordChars.forEach((charSpan, index) => {
+                if (typedText[index] == null) {
+                    charSpan.className = ''; isCorrect = false;
+                } else if (typedText[index] === charSpan.textContent) {
+                    charSpan.className = 'correct';
+                } else {
+                    charSpan.className = 'incorrect'; isCorrect = false;
+                }
+            });
+
+            if (isCorrect && typedText.length > 0 && typedText === currentWord) {
+                if (myRoom) {
+                    socket.emit('wordTyped', { room: myRoom });
+                    return;
+                }
+
+                score += currentWord.length;
+                scoreDisplay.textContent = score;
+                monsterImage.classList.add('hurt');
+                setTimeout(() => monsterImage.classList.remove('hurt'), 200);
+                currentMonsterHealth--;
+                updateHealthBar();
+
+                if (currentMonsterHealth <= 0) {
+                    gameLevel++;
+                    setTimeout(newRound, 500);
+                } else {
+                    getNewWord();
+                }
+            }
+        }
+
+        function updateTimer() {
+            timeLeft--;
+            timerDisplay.textContent = timeLeft;
+            if (timeLeft <= 0) {
+                gameOver();
+            }
+        }
+    
+        async function gameOver() {
+            isPlaying = false;
+            clearInterval(timer);
+
+            // ⭐️ ซ่อน UI ของมอนสเตอร์ตอนจบเกม ⭐️
+            monsterImage.style.display = 'none';
+            document.getElementById('health-bar-container').style.display = 'none';
+            
+            monsterName.textContent = "จบเกม!";
+            wordToType.innerHTML = `<span style="font-size: 0.8em;">คะแนนสุดท้าย: ${score}</span>`;
+            playerInput.disabled = true;
+
+            if (score > 0) {
+                const playerName = prompt("สุดยอด! ใส่ชื่อของคุณเพื่อบันทึกลง Leaderboard:", "Player");
+                if (playerName) {
+                    await saveScore(playerName, score);
+                }
+            }
+            
+            startButton.style.display = 'block';
+            startButton.textContent = 'เล่นอีกครั้ง';
+            await displayLeaderboard();
+        }
+
+        // --- 4. ฟังก์ชันสำหรับ Leaderboard (Firebase) ---
+
+        async function saveScore(name, scoreValue) {
+            try {
+                await db.collection("leaderboard").add({
+                    name: name,
+                    score: scoreValue,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการบันทึกคะแนน: ", error);
+            }
+        }
+    
+        async function displayLeaderboard() {
+            leaderboardList.innerHTML = '<li>กำลังโหลด...</li>';
+            try {
+                const snapshot = await db.collection("leaderboard")
+                                         .orderBy("score", "desc")
+                                         .limit(10)
+                                         .get();
+                
+                leaderboardList.innerHTML = '';
+                if (snapshot.empty) {
+                    leaderboardList.innerHTML = '<li>ยังไม่มีข้อมูล</li>';
+                    return;
+                }
+    
+                let rank = 1;
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>#${rank} ${data.name}</span><span>${data.score}</span>`;
+                    leaderboardList.appendChild(li);
+                    rank++;
+                });
+    
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการดึงข้อมูล: ", error);
+                leaderboardList.innerHTML = '<li>เกิดข้อผิดพลาด</li>';
+            }
+        }
+    
+        // --- 5. การเริ่มทำงาน ---
+
+        startButton.addEventListener('click', startGame);
+        playerInput.addEventListener('input', checkInput);
+        displayLeaderboard();
+    
+    </script>
+
+</body>
+</html>
